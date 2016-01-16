@@ -1,6 +1,20 @@
+/*
+ * Copyright (c) 2016 AsyncHttpClient Project. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at
+ *     http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package org.asynchttpclient.testserver;
 
 import static org.asynchttpclient.test.TestUtils.*;
+import io.netty.handler.codec.http.HttpHeaders;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -57,12 +71,23 @@ public class HttpServer implements Closeable {
         handlers.offer(new EchoHandler());
     }
 
+    public void enqueueRedirect(int status, String location) {
+        enqueueResponse(response -> {
+            response.setStatus(status);
+            response.setHeader(HttpHeaders.Names.LOCATION, location);
+        });
+    }
+
     public int getPort() {
         return port;
     }
 
     public String getUrl() {
         return "http://localhost:" + port;
+    }
+
+    public void reset() {
+        handlers.clear();
     }
 
     @Override
@@ -82,7 +107,6 @@ public class HttpServer implements Closeable {
         public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 
             Handler handler = HttpServer.this.handlers.poll();
-
             if (handler == null) {
                 response.sendError(500, "No handler enqueued");
                 response.getOutputStream().flush();
@@ -150,8 +174,22 @@ public class HttpServer implements Closeable {
                     throw new ServletException(e1);
                 }
             }
-            
+
             response.setStatus(200);
+
+            if (request.getMethod().equalsIgnoreCase("OPTIONS")) {
+                response.addHeader("Allow", "GET,HEAD,POST,OPTIONS,TRACE");
+            }
+
+            response.addHeader("X-ClientPort", String.valueOf(request.getRemotePort()));
+
+            String pathInfo = request.getPathInfo();
+            if (pathInfo != null)
+                response.addHeader("X-PathInfo", pathInfo);
+
+            String queryString = request.getQueryString();
+            if (queryString != null)
+                response.addHeader("X-QueryString", queryString);
 
             Enumeration<String> headerNames = request.getHeaderNames();
             while (headerNames.hasMoreElements()) {
